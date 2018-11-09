@@ -1,0 +1,141 @@
+---
+title: "PA1_template"
+author: "Carlos Ortega"
+date: "November 8, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+# Loading Data
+library(ggplot2)
+library(plyr)
+library(lattice)
+```
+
+## Importing Data
+Reading data from activity.csv
+```{r reading, cache=TRUE}
+activity <- read.csv("activity.csv")
+str(activity)
+summary(activity)
+```
+
+#Processing the Data
+Ordering the data by date and taking away the NA values
+```{r processing, cache=TRUE}
+activity$day <- weekdays(as.Date(activity$date))
+activity$DateTime <- as.POSIXct(activity$date, format="%Y-%m-%d")
+clean <- activity[!is.na(activity$steps),]
+summary(clean)
+```
+
+## What is the average daily activity pattern?
+#### 1. Calculate the total number of steps taken per day (ignore the missing values)
+```{r calculate, cache=TRUE}
+table <- aggregate(activity$steps ~ activity$date, FUN=sum)
+colnames(table) <- c("Date", "Steps")
+```
+View total number of steps taken per day as a Histogram
+```{r histogram, cache=TRUE}
+hist(table$Steps, breaks = 5, xlab = "Steps", main = "Total Steps per Day")
+```
+
+```{r mean_median, cache=TRUE}
+mean_steps <- as.integer(mean(table$Steps))
+median_steps <- as.integer(median(table$Steps))
+```
+Mean and median of the total number of steps taken per day are `r mean_steps` steps and `r median_steps` steps, respectively.
+
+## What is the average daily activity pattern?
+
+#### 1. Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+
+```{r daily, cache=TRUE}
+table <- ddply(clean, .(interval), summarize, Avg=mean(steps))
+
+#we create a line plot with the number of steps per interval
+p <- ggplot(table, aes(x=interval, y=Avg), xlab="Interval", ylab="Average Number of Steps")
+p + geom_line()+xlab("Interval")+ylab("Average Number of Steps")+ggtitle("Average Number of Steps per Interval")
+
+#maximum steps by interval
+max <- as.integer(max(table$Avg))
+
+#maximum average number of steps
+max_val <- table[table$Avg == max, 1]
+```
+The maximum number of steps for a 5-minute interval was `r max` steps.
+
+The 5-minute interval which had the maximum number of steps was the `r max_val` interval.
+
+## Imputing missing values
+
+#### Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs)
+```{r total_NAs, cache=TRUE}
+#number of NAs in the original data set
+total_nas <- nrow(activity) - nrow(clean)
+```
+The total number of NAs is `r total_nas`
+
+```{r missing, cache=TRUE}
+#Create the average number of steps per weekday and interval
+table <- ddply(clean, .(interval, day), summarize, Avg=mean(steps))
+
+#Dataset with all NAs
+nadata <- activity[is.na(activity$steps),]
+
+#merge na data with average weekday interval for substitution
+newdata <- merge(nadata, table, by=c("interval", "day"))
+
+#reorder the data in order to have the same format as the clean data
+newdataTwo <- newdata[,c(6,4,1,2,5)]
+colnames(newdataTwo) <- c("steps", "date", "interval", "day", "DateTime")
+
+#merge the NA data (newdata) + non NA data (clean)
+mergeVar <- rbind(clean, newdataTwo)
+
+#Create sum of steps per date to compare with step 1
+sumTable <- aggregate(mergeVar$steps ~ mergeVar$date, FUN=sum)
+tableSum <- aggregate(activity$steps ~ activity$date, FUN=sum)
+colnames(sumTable) <- c("Date", "Steps")
+
+# mean
+mean_missing <- as.integer(mean(sumTable$Steps))
+
+#median
+median_missing <- as.integer(median(sumTable$Steps))
+
+#Create the histogram displaying the total steps per day
+
+hist(sumTable$Steps, breaks = 5, xlab = "Steps", main = "Total Steps per Day with NAs Fixed", col = "Black")
+hist(tableSum$Steps, breaks = 5, xlab = "Steps", main = "Total Steps per Day with NAs Fixed", col = "Grey", add = T)
+legend("topright", c("Imputed Data", "Non-NA Data"), fill = c("black", "grey"))
+```
+
+```{r calc_difference, cache=TRUE}
+mean_diff <- mean_missing - mean_steps
+median_diff <- median_missing - median_steps
+```
+The new mean of the imputed data is `r mean_missing` steps compared to the old mean of `r mean_steps` steps. That creates a difference of `r mean_diff` steps on average per day.
+
+The new median of the imputed data is `r median_missing` steps compared to the old median of `r median_steps` steps. That creates a difference of `r median_diff` steps for the median.
+
+## Activity Patterns Between Weekdays and Weekends
+
+#### Create a new factor variable in the dataset with two levels - "weekday" and "weekend" indicating whether a given date is a weekday or weekend day.
+
+#### Make a panel plot containing a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis).
+```{r patterns, cache=TRUE}
+mergeVar$DayCategory <- ifelse(mergeVar$day %in% c("Saturday", "Sunday"), "Weekend", "Weekday")
+
+#summarize data by interval and type o the day
+interval <- ddply(mergeVar, .(interval, DayCategory), summarize, Avg=mean(steps))
+
+#Plot
+xyplot(Avg~interval|DayCategory, data=interval, type="l", layout = c(1,2),
+       main="Average Steps per Interval Based on Type of Day",
+       ylab="Average Number of Steps", xlab="Interval")
+```
