@@ -1,0 +1,84 @@
+---
+title: "Excercise Analysis"
+author: "Carlos Ortega"
+date: "November 23, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Disclaimer
+The data used for this report was obtained from [http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har).
+
+```{r libraries, cache=TRUE, message=FALSE, warning=FALSE}
+library(caret)
+library(rpart)
+library(randomForest)
+library(ElemStatLearn)
+library(corrplot)
+set.seed(666) # For research reproducibility purpose
+```
+
+## Data Preprocessing
+```{r preprocessing, cache=TRUE}
+##loading data
+trainRaw <- read.csv("./pml-training.csv",header=T,sep=",",na.strings=c("NA",""))
+testRaw <- read.csv("./pml-testing.csv",header=T,sep=",",na.strings=c("NA",""))
+
+##We partition data in training and testing sets
+trainRaw <- trainRaw[,-1] # Remove the first column that represents a ID Row
+inTrain = createDataPartition(trainRaw$classe, p=0.60, list=F)
+training = trainRaw[inTrain,]
+validating = trainRaw[-inTrain,]
+
+##Since a random forest model is chosen and the data set must first be checked on possibility of columns without data.
+
+##The decision is made whereby all the columns that having less than 60% of data filled are removed.
+sum((colSums(!is.na(training[,-ncol(training)])) < 0.6*nrow(training)))
+
+##Next, the criteria to remove columns that do not satisfy is applied before applying to the model.
+Keep <- c((colSums(!is.na(training[,-ncol(training)])) >= 0.6*nrow(training)))
+training   <-  training[,Keep]
+validating <- validating[,Keep]
+```
+
+## Modeling
+In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. It is estimated internally, during the execution. Therefore, the training of the model (Random Forest) is proceeded using the training data set.
+```{r modelling, cache=TRUE}
+model <- randomForest(classe~.,data=training)
+model
+```
+
+## Evaluation
+```{r evaluation, cache=TRUE}
+importance(model)
+confusionMatrix(predict(model,newdata=validating[,-ncol(validating)]),validating$classe)
+
+##Now we calculate the accuracy of the model
+acrcy<-c(as.numeric(predict(model,newdata=validating[,-ncol(validating)])==validating$classe))
+acrcy<-sum(acrcy)*100/nrow(validating)
+```
+
+Model Accuracy as tested over Validation set = `r round(acrcy, digits=2)`%. The out-of-sample error is only `r round(100 - acrcy, digits=2)`.
+
+## Test
+We test the data loaded previously and predict the new values. We apply the same data preprocessing techniques as with the training dataset.
+```{r test, cache=TRUE}
+testRaw <- testRaw[,-1] # Remove the first column that represents a ID Row
+testRaw <- testRaw[ , Keep] # Keep the same columns of testing dataset
+testRaw <- testRaw[,-ncol(testRaw)] # Remove the problem ID
+
+# Coerce testing dataset to same class and structure of training dataset 
+testing <- rbind(training[100, -59] , testRaw) 
+
+# Apply the ID Row to row.names and 100 for dummy row from testing dataset 
+row.names(testing) <- c(100, 1:20)
+```
+
+## Prediction
+```{r prediction, cache=TRUE}
+predictions <- predict(model,newdata=testing[-1,])
+predictions
+```
